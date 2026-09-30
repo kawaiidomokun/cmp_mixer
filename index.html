@@ -409,17 +409,17 @@ button:active {
     const orangePcu09ConnectionSets = [
       {
         id: "bta02Pcu09",
-        source: "_9bta-02",
+        sourceLabels: ["BTA-02", "PCU09"],
         label: "BTA-02 PCU09"
       },
       {
         id: "esc784Pcu09",
-        source: "_9esc-784",
+        sourceLabels: ["ESC 784", "PCU09"],
         label: "ESC 784 PCU09"
       },
       {
         id: "ecpCleanPcu09",
-        source: "_9ecp_clean",
+        sourceLabels: ["ECP CLEAN", "PCU09"],
         label: "ECP CLEAN PCU09"
       }
     ];
@@ -484,6 +484,54 @@ button:active {
         return textElement.textContent.replace(/\s+/g, "") === name;
 
       }) || null;
+
+    }
+
+
+    function findSvgGroupWithLabels(sourceSvg, labels) {
+
+      const normalizedLabels =
+        labels.map(function(label) {
+
+          return label.replace(/\s+/g, "").toLowerCase();
+
+        });
+
+
+      const matchingGroups =
+        Array.from(sourceSvg.querySelectorAll("g")).filter(function(group) {
+
+          const groupLabels =
+            Array.from(group.querySelectorAll("text")).map(function(text) {
+
+              return text.textContent.replace(/\s+/g, "").toLowerCase();
+
+            });
+
+
+          return normalizedLabels.every(function(label) {
+
+            return groupLabels.includes(label);
+
+          });
+
+        });
+
+
+      return matchingGroups.reduce(function(smallest, group) {
+
+        const bounds =
+          group.getBBox();
+
+        const area =
+          bounds.width * bounds.height;
+
+
+        return !smallest || area < smallest.area
+          ? { element: group, area: area }
+          : smallest;
+
+      }, null)?.element || null;
 
     }
 
@@ -580,6 +628,61 @@ button:active {
         x: bounds.x + bounds.width / 2,
         y: bounds.y + bounds.height / 2,
         bounds: bounds
+      };
+
+    }
+
+
+    function getSvgCircleCentersByFill(sourceSvg, fill) {
+
+      const normalizedFill =
+        fill.replace(/\s+/g, "").toLowerCase();
+
+
+      return Array.from(
+        sourceSvg.querySelectorAll("circle")
+      ).filter(function(circle) {
+
+        return getComputedStyle(circle).fill
+          .replace(/\s+/g, "")
+          .toLowerCase() === normalizedFill;
+
+      }).map(getSvgObjectCenter);
+
+    }
+
+
+    function getBoundsEdgePoint(bounds, targetCenter) {
+
+      const centerX =
+        bounds.x + bounds.width / 2;
+
+      const centerY =
+        bounds.y + bounds.height / 2;
+
+      const directionX =
+        targetCenter.x - centerX;
+
+      const directionY =
+        targetCenter.y - centerY;
+
+      const scaleX =
+        directionX === 0
+          ? Infinity
+          : bounds.width / 2 / Math.abs(directionX);
+
+      const scaleY =
+        directionY === 0
+          ? Infinity
+          : bounds.height / 2 / Math.abs(directionY);
+
+      const scale =
+        Math.min(scaleX, scaleY);
+
+
+      return {
+        x: centerX + directionX * scale,
+        y: centerY + directionY * scale
       };
 
     }
@@ -686,7 +789,8 @@ button:active {
       hitTargetId,
       lineColor,
       ariaLabel,
-      sourceMarkerCenters
+      sourceMarkerCenters,
+      sourceAnchorToBounds
     ) {
 
       const linesGroup =
@@ -700,7 +804,7 @@ button:active {
           ? getNearestMarkerCenter(sourceCenter, sourceMarkerCenters)
           : null;
 
-      const sourcePoint =
+      const defaultSourcePoint =
         nearestSourceMarker &&
         Math.hypot(
           nearestSourceMarker.x - sourceCenter.x,
@@ -727,6 +831,12 @@ button:active {
           return;
 
         }
+
+
+        const sourcePoint =
+          sourceAnchorToBounds
+            ? getBoundsEdgePoint(sourceCenter.bounds, targetCenter)
+            : defaultSourcePoint;
 
 
         const line =
@@ -1036,7 +1146,12 @@ button:active {
           function(connectionSet) {
 
             const source =
-              findSvgObject(geometrySvg, connectionSet.source);
+              connectionSet.sourceLabels
+                ? findSvgGroupWithLabels(
+                    geometrySvg,
+                    connectionSet.sourceLabels
+                  )
+                : findSvgObject(geometrySvg, connectionSet.source);
 
 
             if (source) {
@@ -1150,25 +1265,29 @@ button:active {
 
 
         const greenMarkerCenters =
-          Array.from(
-            geometrySvg.querySelectorAll("circle.cls-25")
-          ).map(getSvgObjectCenter);
+          getSvgCircleCentersByFill(
+            geometrySvg,
+            "rgb(0, 255, 102)"
+          );
 
 
         const hf1MarkerCenters =
-          Array.from(
-            geometrySvg.querySelectorAll("circle.cls-24")
-          ).map(getSvgObjectCenter);
+          getSvgCircleCentersByFill(
+            geometrySvg,
+            "rgb(255, 61, 154)"
+          );
 
         const nh4ohMarkerCenters =
-          Array.from(
-            geometrySvg.querySelectorAll("circle.cls-19")
-          ).map(getSvgObjectCenter);
+          getSvgCircleCentersByFill(
+            geometrySvg,
+            "rgb(255, 255, 0)"
+          );
 
         const orangeMarkerCenters =
-          Array.from(
-            geometrySvg.querySelectorAll("circle.cls-20")
-          ).map(getSvgObjectCenter);
+          getSvgCircleCentersByFill(
+            geometrySvg,
+            "rgb(255, 106, 0)"
+          );
 
 
         geometrySvg.remove();
@@ -1274,6 +1393,9 @@ button:active {
             const targets =
               connectionSet.targets || ["PCU09"];
 
+            const isPcu09Source =
+              Boolean(connectionSet.sourceLabels);
+
 
             createConnectionSet(
               objectCenters.get(connectionSet.id),
@@ -1284,7 +1406,8 @@ button:active {
               connectionSet.id + "HitTarget",
               "#FF6A00",
               "Toggle " + connectionSet.label + " connections",
-              orangeMarkerCenters
+              isPcu09Source ? null : orangeMarkerCenters,
+              isPcu09Source
             );
 
           }
