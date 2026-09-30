@@ -1,0 +1,1912 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>CMP Equipment Layout</title>
+
+  <style>
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+
+      overflow: hidden;
+
+      background: #d8d8d3;
+
+      font-family: Arial, sans-serif;
+    }
+
+
+    /* =====================================================
+       VIEWER
+       ===================================================== */
+
+    #viewer {
+
+      position: relative;
+
+      width: 100vw;
+      height: 100vh;
+
+      overflow: hidden;
+
+      cursor: grab;
+
+    }
+
+
+    #viewer.dragging {
+      cursor: grabbing;
+    }
+
+
+    /* =====================================================
+       ARTBOARD
+       ===================================================== */
+
+    #canvas {
+
+      position: absolute;
+
+      left: 0;
+      top: 0;
+
+      display: block;
+
+      transform-origin: 0 0;
+
+      user-select: none;
+
+      -webkit-user-drag: none;
+
+      pointer-events: none;
+
+    }
+
+    #connectionLayer {
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: block;
+      transform-origin: 0 0;
+      overflow: visible;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #connectionLayer .connection-line {
+      fill: none;
+      stroke: #216b36;
+      stroke-width: 6;
+      stroke-dasharray: 2 12;
+      stroke-linecap: round;
+      opacity: 1;
+    }
+
+    #connectionLayer .connection-hit-target {
+      fill: transparent;
+      pointer-events: all;
+      cursor: pointer;
+    }
+
+
+    
+/* =====================================================
+   CONTROL PANEL
+   ===================================================== */
+
+#controls {
+  position: fixed;
+  top: 15px;
+  left: 15px;
+
+  display: flex;
+  align-items: center;
+  gap: 5px;
+
+  padding: 6px;
+
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #999;
+  border-radius: 7px;
+
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+
+  z-index: 100;
+}
+
+
+
+/* =====================================================
+   BUTTONS
+   ===================================================== */
+
+button {
+  min-width: 45px;
+  height: 32px;
+
+  padding: 0 6px;
+
+  border: 1px solid #888;
+  border-radius: 5px;
+
+  background: white;
+
+  font-size: 14px;
+  font-weight: bold;
+
+  cursor: pointer;
+}
+
+button:hover {
+  background: #eeeeee;
+}
+
+button:active {
+  background: #dddddd;
+  transform: scale(0.96);
+}
+
+
+
+/* =====================================================
+   ZOOM DISPLAY
+   ===================================================== */
+
+#zoomDisplay {
+  min-width: 55px;
+
+  text-align: center;
+
+  font-size: 13px;
+  font-weight: bold;
+
+  color: #333;
+}
+
+
+
+
+    /* =====================================================
+       HELP
+       ===================================================== */
+
+    #help {
+
+      position: fixed;
+
+      bottom: 20px;
+      left: 20px;
+
+      padding: 10px 15px;
+
+      background: rgba(255, 255, 255, 0.94);
+
+      border: 2px solid #999;
+
+      border-radius: 8px;
+
+      font-size: 14px;
+
+      z-index: 100;
+
+    }
+
+  </style>
+
+</head>
+
+
+<body>
+
+
+  <!-- =====================================================
+       VIEWER
+       ===================================================== -->
+
+  <div id="viewer">
+
+    <img
+      id="canvas"
+      src="CMP%20room-01.svg"
+      alt="Semiconductor CMP equipment layout"
+    >
+
+    <svg id="connectionLayer" aria-hidden="true"></svg>
+
+  </div>
+
+
+  <!-- =====================================================
+       CONTROLS
+       ===================================================== -->
+
+  <div id="controls">
+
+    <button id="zoomOut">
+      −
+    </button>
+
+    <div id="zoomDisplay">
+      100%
+    </div>
+
+    <button id="zoomIn">
+      +
+    </button>
+
+    <button id="fit">
+      FIT
+    </button>
+
+    <button id="reset">
+      100%
+    </button>
+
+  </div>
+
+
+  <!-- =====================================================
+       HELP
+       ===================================================== -->
+
+  <div id="help">
+
+    Wheel = Zoom
+    &nbsp;&nbsp; | &nbsp;&nbsp;
+    Drag = Pan
+    &nbsp;&nbsp; | &nbsp;&nbsp;
+    Space + Drag = Pan
+
+  </div>
+
+
+  <script>
+
+
+    /* =====================================================
+       ELEMENTS
+       ===================================================== */
+
+    const viewer =
+      document.getElementById("viewer");
+
+    const canvas =
+      document.getElementById("canvas");
+
+    const connectionLayer =
+      document.getElementById("connectionLayer");
+
+    const zoomDisplay =
+      document.getElementById("zoomDisplay");
+
+    const zoomIn =
+      document.getElementById("zoomIn");
+
+    const zoomOut =
+      document.getElementById("zoomOut");
+
+    const fitButton =
+      document.getElementById("fit");
+
+    const resetButton =
+      document.getElementById("reset");
+
+
+    /* =====================================================
+       VIEW STATE
+       ===================================================== */
+
+    let scale = 1;
+
+    let offsetX = 0;
+
+    let offsetY = 0;
+
+    let dragging = false;
+
+    let spaceDown = false;
+
+    let startMouseX = 0;
+
+    let startMouseY = 0;
+
+    let startOffsetX = 0;
+
+    let startOffsetY = 0;
+
+    const MIN_LABEL_FONT_SIZE = 20;
+
+    const CONNECTION_START_OFFSET_X = 0;
+
+    const CONNECTION_START_OFFSET_Y = -19.6;
+
+    const connectionTargets = [
+      "POP06",
+      "POP07",
+      "POX13",
+      "POP05"
+    ];
+
+    const hfConnectionSets = [
+      {
+        mixer: "HF1",
+        targets: ["POX01", "POX09", "POX13"]
+      },
+      {
+        mixer: "HF2",
+        targets: ["POX04", "POX06", "POP02"]
+      },
+      {
+        mixer: "HF3",
+        targets: ["POX07", "POX08"]
+      },
+      {
+        mixer: "HF4",
+        targets: ["POX11", "POX12", "POP04"]
+      }
+    ];
+
+    const nh4ohConnectionSets = [
+      {
+        mixer: "AM1",
+        targets: ["PTU07", "PTU02"],
+        label: "NH4OH Mixer 1"
+      },
+      {
+        mixer: "AM2",
+        targets: ["PTU06"],
+        label: "NH4OH Mixer 2"
+      },
+      {
+        mixer: "AM3",
+        targets: ["POX09", "PTU08"],
+        label: "NH4OH Mixer 3"
+      }
+    ];
+
+    const orangeConnectionSets = [
+      {
+        id: "bta02",
+        source: "bta-02",
+        label: "BTA-02",
+        targets: ["PCU08", "PCU07", "PCU04", "PCU06", "PCU02", "PCU01"]
+      },
+      {
+        id: "esc784",
+        source: "esc-784",
+        label: "ESC 784",
+        targets: ["PCU08", "PCU07", "PCU04", "PCU06", "PCU02", "PCU01"]
+      },
+      {
+        id: "ecpClean",
+        source: "ecp_clean",
+        label: "ECP CLEAN",
+        targets: ["PCU08", "PCU07", "PCU04", "PCU06", "PCU02", "PCU01"]
+      }
+    ];
+
+    const orangePcu09ConnectionSets = [
+      {
+        id: "bta02Pcu09",
+        source: "_9bta-02",
+        label: "BTA-02 PCU09"
+      },
+      {
+        id: "esc784Pcu09",
+        source: "_9esc-784",
+        label: "ESC 784 PCU09"
+      },
+      {
+        id: "ecpCleanPcu09",
+        source: "_9ecp_clean",
+        label: "ECP CLEAN PCU09"
+      }
+    ];
+
+    const svgNamespace =
+      "http://www.w3.org/2000/svg";
+
+    let connectionsInitialized = false;
+
+
+    /* =====================================================
+       UPDATE VIEW
+       ===================================================== */
+
+    function updateView() {
+
+      const viewTransform =
+        "translate(" +
+        offsetX +
+        "px, " +
+        offsetY +
+        "px) scale(" +
+        scale +
+        ")";
+
+
+      canvas.style.transform =
+        viewTransform;
+
+      connectionLayer.style.transform =
+        viewTransform;
+
+
+      zoomDisplay.textContent =
+        Math.round(scale * 100) +
+        "%";
+
+    }
+
+
+    /* =====================================================
+       EQUIPMENT CONNECTIONS
+       ===================================================== */
+
+    function findSvgObject(sourceSvg, name) {
+
+      const objectById =
+        sourceSvg.getElementById(name);
+
+
+      if (objectById) {
+
+        return objectById;
+
+      }
+
+
+      return Array.from(
+        sourceSvg.querySelectorAll("text")
+      ).find(function(textElement) {
+
+        return textElement.textContent.replace(/\s+/g, "") === name;
+
+      }) || null;
+
+    }
+
+
+    function findSvgLabels(sourceSvg, name) {
+
+      return Array.from(
+        sourceSvg.querySelectorAll("text")
+      ).filter(function(textElement) {
+
+        const label =
+          textElement.textContent.replace(/\s+/g, "");
+
+        const fontSize =
+          parseFloat(getComputedStyle(textElement).fontSize);
+
+
+        return (
+          label === name &&
+          fontSize > MIN_LABEL_FONT_SIZE
+        );
+
+      });
+
+    }
+
+
+    function getSvgObjectCenter(svgObject) {
+
+      const localBounds =
+        svgObject.getBBox();
+
+
+      const rootSvg =
+        svgObject.ownerSVGElement;
+
+
+      const elementToRoot =
+        rootSvg.getCTM().inverse().multiply(
+          svgObject.getCTM()
+        );
+
+
+      const corners = [
+        [localBounds.x, localBounds.y],
+        [localBounds.x + localBounds.width, localBounds.y],
+        [localBounds.x, localBounds.y + localBounds.height],
+        [localBounds.x + localBounds.width, localBounds.y + localBounds.height]
+      ].map(function(point) {
+
+        const svgPoint =
+          rootSvg.createSVGPoint();
+
+
+        svgPoint.x = point[0];
+
+        svgPoint.y = point[1];
+
+
+        return svgPoint.matrixTransform(elementToRoot);
+
+      });
+
+
+      const xValues =
+        corners.map(function(point) { return point.x; });
+
+      const yValues =
+        corners.map(function(point) { return point.y; });
+
+
+      const left =
+        Math.min.apply(null, xValues);
+
+      const top =
+        Math.min.apply(null, yValues);
+
+      const right =
+        Math.max.apply(null, xValues);
+
+      const bottom =
+        Math.max.apply(null, yValues);
+
+
+      const bounds = {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top
+      };
+
+
+      return {
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2,
+        bounds: bounds
+      };
+
+    }
+
+
+    function toggleConnections(groupId) {
+
+      const lines =
+        connectionLayer.querySelectorAll(
+          "#" + groupId + " .connection-line"
+        );
+
+
+      if (lines.length > 0) {
+
+        const shouldShow =
+          Array.from(lines).every(function(line) {
+
+            return line.style.display === "none";
+
+          });
+
+
+        Array.from(lines).forEach(function(line) {
+
+          line.style.display = shouldShow ? "" : "none";
+
+        });
+
+      }
+
+    }
+
+
+    function toggleConnectionsForTarget(targetName) {
+
+      const lines =
+        Array.from(
+          connectionLayer.querySelectorAll(".connection-line")
+        ).filter(function(line) {
+
+          return line.getAttribute("data-target") === targetName;
+
+        });
+
+
+      if (lines.length === 0) {
+
+        return;
+
+      }
+
+
+      const shouldShow =
+        lines.every(function(line) {
+
+          return line.style.display === "none";
+
+        });
+
+
+      lines.forEach(function(line) {
+
+        line.style.display = shouldShow ? "" : "none";
+
+      });
+
+    }
+
+
+    function getNearestMarkerCenter(targetCenter, markerCenters) {
+
+      if (!targetCenter || markerCenters.length === 0) {
+
+        return targetCenter;
+
+      }
+
+
+      return markerCenters.reduce(function(nearest, marker) {
+
+        const distance =
+          Math.hypot(
+            marker.x - targetCenter.x,
+            marker.y - targetCenter.y
+          );
+
+
+        return !nearest || distance < nearest.distance
+          ? { center: marker, distance: distance }
+          : nearest;
+
+      }, null).center;
+
+    }
+
+
+    function createConnectionSet(
+      sourceCenter,
+      targets,
+      objectCenters,
+      markerCenters,
+      groupId,
+      hitTargetId,
+      lineColor,
+      ariaLabel,
+      sourceMarkerCenters
+    ) {
+
+      const linesGroup =
+        document.createElementNS(svgNamespace, "g");
+
+
+      linesGroup.setAttribute("id", groupId);
+
+      const sourcePoint =
+        sourceMarkerCenters && sourceMarkerCenters.length > 0
+          ? getNearestMarkerCenter(sourceCenter, sourceMarkerCenters)
+          : {
+              x: sourceCenter.x + CONNECTION_START_OFFSET_X,
+              y: sourceCenter.y + CONNECTION_START_OFFSET_Y
+            };
+
+
+      targets.forEach(function(name) {
+
+        const targetCenter =
+          getNearestMarkerCenter(
+            objectCenters.get(name),
+            markerCenters
+          );
+
+
+        if (!targetCenter) {
+
+          return;
+
+        }
+
+
+        const line =
+          document.createElementNS(svgNamespace, "path");
+
+
+        line.setAttribute(
+          "d",
+          "M " +
+          sourcePoint.x +
+          " " +
+          sourcePoint.y +
+          " L " + targetCenter.x + " " + targetCenter.y
+        );
+
+        line.setAttribute("class", "connection-line");
+
+        line.setAttribute("data-target", name);
+
+        line.style.display = "none";
+
+        line.style.stroke = lineColor;
+
+        linesGroup.appendChild(line);
+
+      });
+
+
+      connectionLayer.appendChild(linesGroup);
+
+
+      const hitTarget =
+        document.createElementNS(svgNamespace, "rect");
+
+
+      hitTarget.setAttribute("id", hitTargetId);
+
+      hitTarget.setAttribute("class", "connection-hit-target");
+
+      hitTarget.setAttribute("x", sourceCenter.bounds.x);
+
+      hitTarget.setAttribute("y", sourceCenter.bounds.y);
+
+      hitTarget.setAttribute("width", sourceCenter.bounds.width);
+
+      hitTarget.setAttribute("height", sourceCenter.bounds.height);
+
+      hitTarget.setAttribute("role", "button");
+
+      hitTarget.setAttribute("tabindex", "0");
+
+      hitTarget.setAttribute("aria-label", ariaLabel);
+
+      hitTarget.addEventListener("click", function() {
+
+        toggleConnections(groupId);
+
+      });
+
+      hitTarget.addEventListener("keydown", function(event) {
+
+        if (event.key === "Enter" || event.key === " ") {
+
+          event.preventDefault();
+
+          toggleConnections(groupId);
+
+        }
+
+      });
+
+
+      connectionLayer.appendChild(hitTarget);
+
+    }
+
+
+    function createTargetHitTarget(targetName, targetCenter) {
+
+      const hitTarget =
+        document.createElementNS(svgNamespace, "rect");
+
+      const padding = 6;
+
+
+      hitTarget.setAttribute(
+        "id",
+        "connectionTarget-" + targetName
+      );
+
+      hitTarget.setAttribute("class", "connection-hit-target");
+
+      hitTarget.setAttribute("x", targetCenter.bounds.x - padding);
+
+      hitTarget.setAttribute("y", targetCenter.bounds.y - padding);
+
+      hitTarget.setAttribute(
+        "width",
+        targetCenter.bounds.width + padding * 2
+      );
+
+      hitTarget.setAttribute(
+        "height",
+        targetCenter.bounds.height + padding * 2
+      );
+
+      hitTarget.setAttribute("role", "button");
+
+      hitTarget.setAttribute("tabindex", "0");
+
+      hitTarget.setAttribute(
+        "aria-label",
+        "Toggle connections for " + targetName
+      );
+
+      hitTarget.addEventListener("click", function() {
+
+        toggleConnectionsForTarget(targetName);
+
+      });
+
+      hitTarget.addEventListener("keydown", function(event) {
+
+        if (event.key === "Enter" || event.key === " ") {
+
+          event.preventDefault();
+
+          toggleConnectionsForTarget(targetName);
+
+        }
+
+      });
+
+
+      connectionLayer.appendChild(hitTarget);
+
+    }
+
+
+    async function initializeConnections() {
+
+      if (connectionsInitialized) {
+
+        return;
+
+      }
+
+
+      connectionsInitialized = true;
+
+
+      try {
+
+        const response =
+          await fetch(canvas.currentSrc || canvas.src);
+
+
+        if (!response.ok) {
+
+          throw new Error("SVG request returned " + response.status);
+
+        }
+
+
+        const svgText =
+          await response.text();
+
+
+        const parsedDocument =
+          new DOMParser().parseFromString(
+            svgText,
+            "image/svg+xml"
+          );
+
+
+        const sourceSvg =
+          parsedDocument.documentElement;
+
+
+        if (
+          sourceSvg.localName !== "svg" ||
+          parsedDocument.querySelector("parsererror")
+        ) {
+
+          throw new Error("The SVG file could not be parsed.");
+
+        }
+
+
+        const viewBox =
+          sourceSvg.getAttribute("viewBox");
+
+
+        if (!viewBox) {
+
+          throw new Error("The SVG is missing its viewBox attribute.");
+
+        }
+
+
+        const geometrySvg =
+          document.importNode(sourceSvg, true);
+
+
+        geometrySvg.setAttribute("width", canvas.naturalWidth);
+
+        geometrySvg.setAttribute("height", canvas.naturalHeight);
+
+        geometrySvg.style.position = "fixed";
+
+        geometrySvg.style.left = "-10000px";
+
+        geometrySvg.style.top = "0";
+
+        geometrySvg.style.opacity = "0";
+
+        geometrySvg.style.pointerEvents = "none";
+
+        document.body.appendChild(geometrySvg);
+
+
+        const sourceObject =
+          findSvgObject(geometrySvg, "SC1");
+
+        const hfSourceObjects =
+          new Map();
+
+        const nh4ohSourceObjects =
+          new Map();
+
+        const orangeSourceObjects =
+          new Map();
+
+
+        if (!sourceObject) {
+
+          console.error(
+            'Connection feature could not find SVG object "SC1" by ID or exact text label.'
+          );
+
+          geometrySvg.remove();
+
+          return;
+
+        }
+
+
+        const objects = [
+          { name: "SC1", element: sourceObject }
+        ];
+
+
+        hfConnectionSets.forEach(function(connectionSet) {
+
+          const source =
+            findSvgObject(geometrySvg, connectionSet.mixer);
+
+
+          if (source) {
+
+            hfSourceObjects.set(connectionSet.mixer, source);
+
+            objects.push({ name: connectionSet.mixer, element: source });
+
+          } else {
+
+            console.error(
+              'Connection feature could not find SVG object "' +
+              connectionSet.mixer +
+              '" by ID or exact text label.'
+            );
+
+          }
+
+        });
+
+
+        nh4ohConnectionSets.forEach(function(connectionSet) {
+
+          const source =
+            findSvgObject(geometrySvg, connectionSet.mixer);
+
+
+          if (source) {
+
+            nh4ohSourceObjects.set(connectionSet.mixer, source);
+
+            objects.push({ name: connectionSet.mixer, element: source });
+
+          } else {
+
+            console.error(
+              'Connection feature could not find SVG object "' +
+              connectionSet.mixer +
+              '" by ID or exact text label.'
+            );
+
+          }
+
+        });
+
+
+        orangeConnectionSets.concat(orangePcu09ConnectionSets).forEach(
+          function(connectionSet) {
+
+            const source =
+              findSvgObject(geometrySvg, connectionSet.source);
+
+
+            if (source) {
+
+              orangeSourceObjects.set(connectionSet.id, source);
+
+              objects.push({ name: connectionSet.id, element: source });
+
+            } else {
+
+              console.error(
+                'Connection feature could not find SVG object "' +
+                connectionSet.source +
+                '" for "' +
+                connectionSet.label +
+                '".'
+              );
+
+            }
+
+          }
+
+        );
+
+
+        const allConnectionTargets =
+          Array.from(
+            new Set(
+              connectionTargets.concat(
+                hfConnectionSets
+                  .concat(nh4ohConnectionSets, orangeConnectionSets)
+                  .reduce(
+                    function(targets, connectionSet) {
+
+                      return targets.concat(connectionSet.targets);
+
+                    },
+                    ["PCU09"]
+                  )
+              )
+            )
+          );
+
+
+        allConnectionTargets.forEach(function(name) {
+
+          const matchingLabels =
+            findSvgLabels(geometrySvg, name);
+
+
+          if (matchingLabels.length > 1) {
+
+            console.warn(
+              'Multiple matching SVG text labels for "' +
+              name +
+              '" exceed ' +
+              MIN_LABEL_FONT_SIZE +
+              'px; no endpoint was selected. Candidates:',
+              matchingLabels.map(function(textElement) {
+
+                return {
+                  element: textElement,
+                  fontSize: getComputedStyle(textElement).fontSize,
+                  bounds: textElement.getBBox()
+                };
+
+              })
+            );
+
+            return;
+
+          }
+
+
+          const element =
+            matchingLabels[0];
+
+
+          if (!element) {
+
+            console.error(
+              'Connection feature could not find SVG object "' +
+              name +
+              '" with exact text and font size greater than ' +
+              MIN_LABEL_FONT_SIZE +
+              'px.'
+            );
+
+            return;
+
+          }
+
+
+          objects.push({ name: name, element: element });
+
+        });
+
+
+        const objectCenters =
+          new Map();
+
+
+        objects.forEach(function(object) {
+
+          objectCenters.set(
+            object.name,
+            getSvgObjectCenter(object.element)
+          );
+
+        });
+
+
+        const greenMarkerCenters =
+          Array.from(
+            geometrySvg.querySelectorAll("circle.cls-21")
+          ).map(getSvgObjectCenter);
+
+
+        const hf1MarkerCenters =
+          Array.from(
+            geometrySvg.querySelectorAll("circle.cls-23")
+          ).map(getSvgObjectCenter);
+
+        const nh4ohMarkerCenters =
+          Array.from(
+            geometrySvg.querySelectorAll("circle.cls-2")
+          ).map(getSvgObjectCenter);
+
+        const orangeMarkerCenters =
+          Array.from(
+            geometrySvg.querySelectorAll("circle.cls-20")
+          ).map(getSvgObjectCenter);
+
+
+        geometrySvg.remove();
+
+
+        connectionLayer.setAttribute("viewBox", viewBox);
+
+        connectionLayer.setAttribute(
+          "preserveAspectRatio",
+          sourceSvg.getAttribute("preserveAspectRatio") || "xMidYMid meet"
+        );
+
+        const canvasSize =
+          getCanvasSize();
+
+
+        connectionLayer.style.width =
+          canvasSize.width + "px";
+
+        connectionLayer.style.height =
+          canvasSize.height + "px";
+
+
+        createConnectionSet(
+          objectCenters.get("SC1"),
+          connectionTargets,
+          objectCenters,
+          greenMarkerCenters,
+          "connectionLines",
+          "sc1HitTarget",
+          "#216b36",
+          "Toggle SC1 connections"
+        );
+
+
+        hfConnectionSets.forEach(function(connectionSet) {
+
+          if (!hfSourceObjects.has(connectionSet.mixer)) {
+
+            return;
+
+          }
+
+
+          const mixerId =
+            connectionSet.mixer.toLowerCase();
+
+
+          createConnectionSet(
+            objectCenters.get(connectionSet.mixer),
+            connectionSet.targets,
+            objectCenters,
+            hf1MarkerCenters,
+            mixerId + "ConnectionLines",
+            mixerId + "HitTarget",
+            "#720E2A",
+            "Toggle " + connectionSet.mixer + " connections"
+          );
+
+        });
+
+
+        nh4ohConnectionSets.forEach(function(connectionSet) {
+
+          if (!nh4ohSourceObjects.has(connectionSet.mixer)) {
+
+            return;
+
+          }
+
+
+          const mixerId =
+            connectionSet.mixer.toLowerCase();
+
+
+          createConnectionSet(
+            objectCenters.get(connectionSet.mixer),
+            connectionSet.targets,
+            objectCenters,
+            nh4ohMarkerCenters,
+            mixerId + "ConnectionLines",
+            mixerId + "HitTarget",
+            "#949440",
+            "Toggle " + connectionSet.label + " connections"
+          );
+
+        });
+
+
+        orangeConnectionSets.concat(orangePcu09ConnectionSets).forEach(
+          function(connectionSet) {
+
+            if (!orangeSourceObjects.has(connectionSet.id)) {
+
+              return;
+
+            }
+
+
+            const targets =
+              connectionSet.targets || ["PCU09"];
+
+
+            createConnectionSet(
+              objectCenters.get(connectionSet.id),
+              targets,
+              objectCenters,
+              orangeMarkerCenters,
+              connectionSet.id + "ConnectionLines",
+              connectionSet.id + "HitTarget",
+              "#CD6632",
+              "Toggle " + connectionSet.label + " connections",
+              orangeMarkerCenters
+            );
+
+          }
+
+        );
+
+
+        allConnectionTargets.forEach(function(name) {
+
+          const targetCenter =
+            objectCenters.get(name);
+
+
+          if (targetCenter) {
+
+            createTargetHitTarget(name, targetCenter);
+
+          }
+
+        });
+
+        updateView();
+
+      } catch (error) {
+
+        console.error(
+          "Could not initialize SVG equipment connections:",
+          error
+        );
+
+      }
+
+    }
+
+
+    /* =====================================================
+       GET SVG SIZE
+       ===================================================== */
+
+    function getCanvasSize() {
+
+      const oldTransform =
+        canvas.style.transform;
+
+
+      canvas.style.transform =
+        "none";
+
+
+      const rect =
+        canvas.getBoundingClientRect();
+
+
+      canvas.style.transform =
+        oldTransform;
+
+
+      return {
+
+        width: rect.width,
+
+        height: rect.height
+
+      };
+
+    }
+
+
+    /* =====================================================
+       FIT TO SCREEN
+       ===================================================== */
+
+    function fitToScreen() {
+
+      const oldTransform =
+        canvas.style.transform;
+
+
+      canvas.style.transform =
+        "none";
+
+
+      const rect =
+        canvas.getBoundingClientRect();
+
+
+      canvas.style.transform =
+        oldTransform;
+
+
+      const imageWidth =
+        rect.width;
+
+      const imageHeight =
+        rect.height;
+
+
+      connectionLayer.style.width =
+        imageWidth + "px";
+
+      connectionLayer.style.height =
+        imageHeight + "px";
+
+
+      if (
+        imageWidth <= 0 ||
+        imageHeight <= 0
+      ) {
+
+        return;
+
+      }
+
+
+      const viewerWidth =
+        viewer.clientWidth;
+
+      const viewerHeight =
+        viewer.clientHeight;
+
+
+      /*
+        Space around the artboard.
+      */
+
+      const padding = 120;
+
+
+      /*
+        Calculate the scale needed
+        to fit the entire artboard.
+      */
+
+      const fitScaleX =
+        (viewerWidth - padding) /
+        imageWidth;
+
+
+      const fitScaleY =
+        (viewerHeight - padding) /
+        imageHeight;
+
+
+      const fitScale =
+        Math.min(
+          fitScaleX,
+          fitScaleY
+        );
+
+
+      /*
+        Slightly larger than
+        perfect fit.
+
+        1.00 = exact fit
+        1.10 = 10% larger
+      */
+
+      scale =
+        fitScale * 1.10;
+
+
+      /*
+        Center the artboard.
+      */
+
+      offsetX =
+        (
+          viewerWidth -
+          imageWidth * scale
+        ) / 2;
+
+
+      offsetY =
+        (
+          viewerHeight -
+          imageHeight * scale
+        ) / 2;
+
+
+      updateView();
+
+    }
+
+
+    /* =====================================================
+       ZOOM AROUND POINT
+       ===================================================== */
+
+    function zoomAroundPoint(
+      mouseX,
+      mouseY,
+      newScale
+    ) {
+
+      const oldScale =
+        scale;
+
+
+      /*
+        Zoom limits
+      */
+
+      newScale =
+        Math.max(
+          0.01,
+          Math.min(
+            20,
+            newScale
+          )
+        );
+
+
+      /*
+        Keep the point underneath
+        the mouse stationary.
+      */
+
+      offsetX =
+        mouseX -
+        (
+          mouseX -
+          offsetX
+        ) *
+        (
+          newScale /
+          oldScale
+        );
+
+
+      offsetY =
+        mouseY -
+        (
+          mouseY -
+          offsetY
+        ) *
+        (
+          newScale /
+          oldScale
+        );
+
+
+      scale =
+        newScale;
+
+
+      updateView();
+
+    }
+
+
+    /* =====================================================
+       MOUSE WHEEL ZOOM
+       ===================================================== */
+
+    viewer.addEventListener(
+      "wheel",
+      function(event) {
+
+        event.preventDefault();
+
+
+        const rect =
+          viewer.getBoundingClientRect();
+
+
+        const mouseX =
+          event.clientX -
+          rect.left;
+
+
+        const mouseY =
+          event.clientY -
+          rect.top;
+
+
+        const factor =
+          event.deltaY < 0
+            ? 1.2
+            : 0.8333;
+
+
+        zoomAroundPoint(
+          mouseX,
+          mouseY,
+          scale * factor
+        );
+
+      },
+      {
+        passive: false
+      }
+    );
+
+
+    /* =====================================================
+       START DRAG
+       ===================================================== */
+
+    viewer.addEventListener(
+      "mousedown",
+      function(event) {
+
+        /*
+          Middle mouse
+          OR
+          Space + left mouse
+        */
+
+        if (
+          event.button === 1 ||
+          (
+            event.button === 0 &&
+            spaceDown
+          )
+        ) {
+
+          event.preventDefault();
+
+
+          dragging = true;
+
+
+          viewer.classList.add(
+            "dragging"
+          );
+
+
+          startMouseX =
+            event.clientX;
+
+
+          startMouseY =
+            event.clientY;
+
+
+          startOffsetX =
+            offsetX;
+
+
+          startOffsetY =
+            offsetY;
+
+        }
+
+      }
+    );
+
+
+    /* =====================================================
+       DRAG
+       ===================================================== */
+
+    window.addEventListener(
+      "mousemove",
+      function(event) {
+
+        if (!dragging) {
+
+          return;
+
+        }
+
+
+        const dx =
+          event.clientX -
+          startMouseX;
+
+
+        const dy =
+          event.clientY -
+          startMouseY;
+
+
+        offsetX =
+          startOffsetX +
+          dx;
+
+
+        offsetY =
+          startOffsetY +
+          dy;
+
+
+        updateView();
+
+      }
+    );
+
+
+    /* =====================================================
+       END DRAG
+       ===================================================== */
+
+    window.addEventListener(
+      "mouseup",
+      function() {
+
+        dragging = false;
+
+        viewer.classList.remove(
+          "dragging"
+        );
+
+      }
+    );
+
+
+    /* =====================================================
+       SPACE BAR
+       ===================================================== */
+
+    window.addEventListener(
+      "keydown",
+      function(event) {
+
+        if (
+          event.code === "Space"
+        ) {
+
+          spaceDown = true;
+
+          event.preventDefault();
+
+        }
+
+
+        /*
+          F = Fit
+        */
+
+        if (
+          event.key.toLowerCase() === "f"
+        ) {
+
+          fitToScreen();
+
+        }
+
+
+        /*
+          0 = 100%
+        */
+
+        if (
+          event.key === "0"
+        ) {
+
+          resetButton.click();
+
+        }
+
+
+        /*
+          + = Zoom in
+        */
+
+        if (
+          event.key === "+" ||
+          event.key === "="
+        ) {
+
+          zoomIn.click();
+
+        }
+
+
+        /*
+          - = Zoom out
+        */
+
+        if (
+          event.key === "-"
+        ) {
+
+          zoomOut.click();
+
+        }
+
+      }
+    );
+
+
+    window.addEventListener(
+      "keyup",
+      function(event) {
+
+        if (
+          event.code === "Space"
+        ) {
+
+          spaceDown = false;
+
+        }
+
+      }
+    );
+
+
+    /* =====================================================
+       ZOOM IN BUTTON
+       ===================================================== */
+
+    zoomIn.addEventListener(
+      "click",
+      function() {
+
+        const rect =
+          viewer.getBoundingClientRect();
+
+
+        zoomAroundPoint(
+          rect.width / 2,
+          rect.height / 2,
+          scale * 1.25
+        );
+
+      }
+    );
+
+
+    /* =====================================================
+       ZOOM OUT BUTTON
+       ===================================================== */
+
+    zoomOut.addEventListener(
+      "click",
+      function() {
+
+        const rect =
+          viewer.getBoundingClientRect();
+
+
+        zoomAroundPoint(
+          rect.width / 2,
+          rect.height / 2,
+          scale * 0.8
+        );
+
+      }
+    );
+
+
+    /* =====================================================
+       RESET TO 100%
+       ===================================================== */
+
+    resetButton.addEventListener(
+      "click",
+      function() {
+
+        scale = 1;
+
+
+        const size =
+          getCanvasSize();
+
+
+        offsetX =
+          (
+            viewer.clientWidth -
+            size.width
+          ) / 2;
+
+
+        offsetY =
+          (
+            viewer.clientHeight -
+            size.height
+          ) / 2;
+
+
+        updateView();
+
+      }
+    );
+
+
+    /* =====================================================
+       FIT BUTTON
+       ===================================================== */
+
+    fitButton.addEventListener(
+      "click",
+      function() {
+
+        fitToScreen();
+
+      }
+    );
+
+
+    /* =====================================================
+       INITIAL LOAD
+       ===================================================== */
+
+    canvas.addEventListener(
+      "load",
+      function() {
+
+        initializeConnections();
+
+        requestAnimationFrame(
+          function() {
+
+            fitToScreen();
+
+          }
+        );
+
+      }
+    );
+
+
+    if (
+      canvas.complete &&
+      canvas.naturalWidth > 0
+    ) {
+
+      initializeConnections();
+
+      requestAnimationFrame(
+        function() {
+
+          fitToScreen();
+
+        }
+      );
+
+    }
+
+
+    /* =====================================================
+       WINDOW RESIZE
+       ===================================================== */
+
+    window.addEventListener(
+      "resize",
+      function() {
+
+        fitToScreen();
+
+      }
+    );
+
+  </script>
+
+</body>
+</html>
+```
+ 
