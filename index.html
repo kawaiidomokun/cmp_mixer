@@ -695,9 +695,18 @@ button:active {
 
       linesGroup.setAttribute("id", groupId);
 
-      const sourcePoint =
+      const nearestSourceMarker =
         sourceMarkerCenters && sourceMarkerCenters.length > 0
           ? getNearestMarkerCenter(sourceCenter, sourceMarkerCenters)
+          : null;
+
+      const sourcePoint =
+        nearestSourceMarker &&
+        Math.hypot(
+          nearestSourceMarker.x - sourceCenter.x,
+          nearestSourceMarker.y - sourceCenter.y
+        ) <= 25
+          ? nearestSourceMarker
           : {
               x: sourceCenter.x + CONNECTION_START_OFFSET_X,
               y: sourceCenter.y + CONNECTION_START_OFFSET_Y
@@ -1142,18 +1151,18 @@ button:active {
 
         const greenMarkerCenters =
           Array.from(
-            geometrySvg.querySelectorAll("circle.cls-21")
+            geometrySvg.querySelectorAll("circle.cls-25")
           ).map(getSvgObjectCenter);
 
 
         const hf1MarkerCenters =
           Array.from(
-            geometrySvg.querySelectorAll("circle.cls-23")
+            geometrySvg.querySelectorAll("circle.cls-24")
           ).map(getSvgObjectCenter);
 
         const nh4ohMarkerCenters =
           Array.from(
-            geometrySvg.querySelectorAll("circle.cls-2")
+            geometrySvg.querySelectorAll("circle.cls-19")
           ).map(getSvgObjectCenter);
 
         const orangeMarkerCenters =
@@ -1191,7 +1200,8 @@ button:active {
           "connectionLines",
           "sc1HitTarget",
           "#00FF66",
-          "Toggle SC1 connections"
+          "Toggle SC1 connections",
+          greenMarkerCenters
         );
 
 
@@ -1216,7 +1226,8 @@ button:active {
             mixerId + "ConnectionLines",
             mixerId + "HitTarget",
             "#FF3D9A",
-            "Toggle " + connectionSet.mixer + " connections"
+            "Toggle " + connectionSet.mixer + " connections",
+            hf1MarkerCenters
           );
 
         });
@@ -1243,7 +1254,8 @@ button:active {
             mixerId + "ConnectionLines",
             mixerId + "HitTarget",
             "#FFFF00",
-            "Toggle " + connectionSet.label + " connections"
+            "Toggle " + connectionSet.label + " connections",
+            nh4ohMarkerCenters
           );
 
         });
