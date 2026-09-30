@@ -85,7 +85,7 @@
 
     #connectionLayer .connection-line {
       fill: none;
-      stroke: #216b36;
+      stroke: #00ff66;
       stroke-width: 6;
       stroke-dasharray: 2 12;
       stroke-linecap: round;
@@ -741,6 +741,9 @@ button:active {
 
         line.style.stroke = lineColor;
 
+        line.style.filter =
+          "drop-shadow(0 0 3px " + lineColor + ")";
+
         linesGroup.appendChild(line);
 
       });
@@ -1187,7 +1190,7 @@ button:active {
           greenMarkerCenters,
           "connectionLines",
           "sc1HitTarget",
-          "#216b36",
+          "#00FF66",
           "Toggle SC1 connections"
         );
 
@@ -1212,7 +1215,7 @@ button:active {
             hf1MarkerCenters,
             mixerId + "ConnectionLines",
             mixerId + "HitTarget",
-            "#720E2A",
+            "#FF3D9A",
             "Toggle " + connectionSet.mixer + " connections"
           );
 
@@ -1239,7 +1242,7 @@ button:active {
             nh4ohMarkerCenters,
             mixerId + "ConnectionLines",
             mixerId + "HitTarget",
-            "#949440",
+            "#FFFF00",
             "Toggle " + connectionSet.label + " connections"
           );
 
@@ -1267,7 +1270,7 @@ button:active {
               orangeMarkerCenters,
               connectionSet.id + "ConnectionLines",
               connectionSet.id + "HitTarget",
-              "#CD6632",
+              "#FF6A00",
               "Toggle " + connectionSet.label + " connections",
               orangeMarkerCenters
             );
